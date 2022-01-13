@@ -1,4 +1,4 @@
-from typing import runtime_checkable, Protocol, TypeVar, Annotated, Any, BinaryIO, NamedTuple, get_args, get_origin, get_type_hints
+from typing import ClassVar, Protocol, TypeVar, Annotated, Any, BinaryIO, NamedTuple, get_args, get_origin
 import struct
 
 __all__ = [
@@ -8,14 +8,15 @@ __all__ = [
 ]
 
 S = TypeVar('S', bound='FixedSerializable')
-@runtime_checkable
+
 class FixedSerializable(Protocol):
     ''' Protocol class for things that can be serialized with a fixed size '''
-    @classmethod
-    def __size__(cls) -> int: ...
+    __size__: ClassVar[int]
     @classmethod
     def __load__(cls: type[S], st: BinaryIO) -> S: ...
     def __save__(self, st: BinaryIO) -> None: ...
+
+is_serializable = lambda cls: hasattr(cls, '__load__') and hasattr(cls, '__save__') and hasattr(cls, '__size__')
 
 
 # PRIMITIVE TYPES
@@ -112,7 +113,7 @@ def parse_hint(hint: Any) -> Any:
     find_metadata = lambda cls: next(filter(lambda x: isinstance(x, cls), metadata), None)
 
     # if class is already serializable, return it
-    if get_origin(hint) is None and issubclass(hint, FixedSerializable): return hint
+    if is_serializable(hint): return hint
 
     if get_origin(hint) is tuple:
         if len(get_args(hint)) == 2 and get_args(hint)[1] is Ellipsis:
