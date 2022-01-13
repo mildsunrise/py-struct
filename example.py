@@ -3,7 +3,6 @@ from io import BytesIO
 from dataclasses import dataclass
 
 # C ALIASES (for LP64)
-# [note that you still need to handle alignment explicitely]
 
 Bool = U8
 Char = S8; UChar = U8

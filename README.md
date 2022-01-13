@@ -8,12 +8,13 @@ project, but I decided to take it a bit further and add some features.
 Features:
  - One file, zero dependencies
  - Easy to use, just annotate your fields and use the decorator
- - Overridable (just define `__load__`, `__save__` & `__size__`)
+ - Overridable (just define `__load__`, `__save__`, `__size__`, `__align__`)
  - Compatible with dataclasses
  - Integer / float primitives
  - Fixed size arrays
  - Raw chunks (`bytes`)
  - Static checking / size calculation
+ - Packed or aligned structs, with 3 padding handling modes
 
 
 ## Example
@@ -24,7 +25,6 @@ from io import BytesIO
 from dataclasses import dataclass
 
 # C ALIASES (for LP64)
-# [note that you still need to handle alignment explicitely]
 
 Bool = U8
 Char = S8; UChar = U8
@@ -65,10 +65,6 @@ assert data == st.getvalue()
 
  - Bit fields
  - Post validation / transform (enums, booleans, string buffers, sets)
- - Alignment
-   - Explicit markers
-   - Decorator option that inserts them for us
-     - Maybe metadata to override alignment for a certain hint
  - Endianness control
    - At annotation time, or at runtime?
  - Unions (? not clear how I'd implement those)

@@ -1,5 +1,6 @@
-from typing import ClassVar, Protocol, TypeVar, Annotated, Any, BinaryIO, NamedTuple, get_args, get_origin
+from typing import ClassVar, Literal, Optional, Protocol, TypeVar, Annotated, Any, BinaryIO, NamedTuple, get_args, get_origin
 import struct
+from math import gcd, lcm
 
 __all__ = [
     'FixedSerializable',
@@ -12,6 +13,7 @@ S = TypeVar('S', bound='FixedSerializable')
 class FixedSerializable(Protocol):
     ''' Protocol class for things that can be serialized with a fixed size '''
     __size__: ClassVar[int]
+    __align__: ClassVar[int]
     @classmethod
     def __load__(cls: type[S], st: BinaryIO) -> S: ...
     def __save__(self, st: BinaryIO) -> None: ...
@@ -38,17 +40,40 @@ F64 = Annotated[float, __PrimitiveField('d')]
 # CORE PARSING
 
 class StructMeta(type):
-    def __new__(cls, name, bases, namespace, **kwds):
+    def __new__(cls, name, bases, namespace,
+        align: Literal['no', 'discard', 'zeros', 'explicit']='discard', **kwds,
+    ):
+        assert align in {'no', 'discard', 'zeros', 'explicit'}
+
         hints = namespace.get('__annotations__', {})
-        hints = { k: parse_hint(v) for k, v in hints.items() }
+        hints = [ (k, parse_hint(v)) for k, v in hints.items() ]
+
+        def insert_padding(k: str, n: int):
+            if align == 'no': return __size__, __align__
+            if pad := (-__size__) % n:
+                if align == 'explicit':
+                    raise AssertionError(f'unannotated {pad} byte padding before [{n}]')
+                fields.append(( None, Padding(pad, align) ))
+            return __size__ + pad, lcm(__align__, n)
+
+        fields = []; __size__ = 0; __align__ = 1
+        for k, t in hints:
+            __size__, __align__ = insert_padding(k, t.__align__)
+            fields.append((k, t))
+            __size__ += t.__size__
+        __size__, __align__ = insert_padding('<end>', __align__)
 
         @classmethod
         def __load__(cls, st: BinaryIO):
-            return cls(**{ k: t.__load__(st) for k, t in hints.items() })
+            values = { k: t.__load__(st) for k, t in fields }
+            del values[None]
+            return cls(**values)
         def __save__(self, st: BinaryIO):
             assert type(self) is dcls
-            for k, t in hints.items(): t.__save__(getattr(self, k), st)
-        namespace['__size__'] = sum(t.__size__ for t in hints.values())
+            for k, t in fields:
+                t.__save__(getattr(self, k) if k != None else k, st)
+        namespace['__align__'] = __align__
+        namespace['__size__'] = __size__
         namespace['__load__'] = __load__
         namespace['__save__'] = __save__
 
@@ -61,10 +86,24 @@ class Struct(metaclass=StructMeta):
     def __load__(cls: type[S], st: BinaryIO) -> S: ...
     def __save__(self, st: BinaryIO) -> None: ...
 
+class Padding(object):
+    __align__ = 1
+    def __init__(self, size: int, mode: str):
+        self.__size__ = size
+        self.mode = mode
+        self.contents = bytes([0]) * size
+    def __load__(self, st: BinaryIO):
+        got = st.read(self.__size__)
+        if self.mode != 'discard':
+            assert got == self.contents, 'incorrect padding'
+    def __save__(self, x, st: BinaryIO):
+        st.write(self.contents)
+
 class FixedSizeTupleSerializer(object):
     def __init__(self, base: Any, size: int):
         self.base, self.size = base, size
         self.__size__ = self.base.__size__ * self.size
+        self.__align__ = self.base.__align__
     def __load__(self, st: BinaryIO):
         return tuple(self.base.__load__(st) for _ in range(self.size))
     def __save__(self, x, st: BinaryIO):
@@ -75,6 +114,7 @@ class TupleSerializer(object):
     def __init__(self, args: list[Any]):
         self.args = args
         self.__size__ = sum(t.__size__ for t in self.args)
+        self.__align__ = gcd(*(t.__align__ for t in self.args))
     def __load__(self, st: BinaryIO):
         return tuple(t.__load__(st) for t in self.args)
     def __save__(self, x, st: BinaryIO):
@@ -82,6 +122,7 @@ class TupleSerializer(object):
         for v, t in zip(x, self.args): t.__save__(v, st)
 
 class FixedSizeBytesSerializer(object):
+    __align__ = 1
     def __init__(self, size: int):
         self.__size__ = size
     def __load__(self, st: BinaryIO):
@@ -93,7 +134,7 @@ class FixedSizeBytesSerializer(object):
 class PrimitiveSerializer(object):
     def __init__(self, fmt: str):
         self.struct = struct.Struct(fmt)
-        self.__size__ = self.struct.size
+        self.__size__ = self.__align__ = self.struct.size
     def __load__(self, st: BinaryIO):
         return self.struct.unpack(st.read(self.__size__))[0]
     def __save__(self, x, st: BinaryIO):
