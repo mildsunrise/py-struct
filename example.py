@@ -27,8 +27,9 @@ class MyStruct(Struct):
 
 # Decode with __load__(), passing an IO
 
-data = b'\x01\x00\x00\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'
-parsed = MyStruct.__load__(BytesIO(data))
+data = b'\x01\x00\x00\x00\x00\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'
+parsed = MyStruct.__load__(st := BytesIO(data))
+assert st.tell() == len(data)
 
 assert parsed == MyStruct(foo=Foo(yeet=1, ping=0), bar=1280, three_bazs=(1, 2, 3))
 
@@ -36,3 +37,21 @@ assert parsed == MyStruct(foo=Foo(yeet=1, ping=0), bar=1280, three_bazs=(1, 2, 3
 
 parsed.__save__(st := BytesIO())
 assert data == st.getvalue()
+
+# Test without alignment
+
+@dataclass
+class MyStruct(Struct, align='no'):
+    foo: Foo
+    bar: UInt
+    three_bazs: tuple[Long, Long, Long]
+
+data = b'\x01\x00\x00\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'
+parsed = MyStruct.__load__(st := BytesIO(data))
+assert st.tell() == len(data)
+
+assert parsed == MyStruct(foo=Foo(yeet=1, ping=0), bar=1280, three_bazs=(1, 2, 3))
+
+parsed.__save__(st := BytesIO())
+assert data == st.getvalue()
+

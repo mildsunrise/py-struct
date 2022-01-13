@@ -49,7 +49,7 @@ class MyStruct(Struct):
 
 # Decode with __load__(), passing an IO
 
-data = b'\x01\x00\x00\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'
+data = b'\x01\x00\x00\x00\x00\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'
 parsed = MyStruct.__load__(BytesIO(data))
 
 assert parsed == MyStruct(foo=Foo(yeet=1, ping=0), bar=1280, three_bazs=(1, 2, 3))
@@ -124,7 +124,7 @@ The `align` metaclass attribute controls how alignment is handled:
  - `explicit`: Don't actually insert any padding, just check that all fields are aligned and that `__size__` is aligned too. This mode expects you to explicitly declare padding as (for example) `bytes`.
  - `no`: No alignment at all. Field alignments are ignored and `__align__` is set to 1. This is equivalent to a packed / unaligned struct.
 
-To create a packed struct:
+For example, to create a packed struct:
 
 ~~~ python
 @dataclass

@@ -65,9 +65,8 @@ class StructMeta(type):
 
         @classmethod
         def __load__(cls, st: BinaryIO):
-            values = { k: t.__load__(st) for k, t in fields }
-            del values[None]
-            return cls(**values)
+            values = [ (k, t.__load__(st)) for k, t in fields ]
+            return cls(**{ k: v for k, v in values if k != None })
         def __save__(self, st: BinaryIO):
             assert type(self) is dcls
             for k, t in fields:
