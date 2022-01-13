@@ -37,14 +37,12 @@ Ptr = Size = U64
 # Define some structs
 
 @dataclass
-@serialized_struct
-class Foo:
+class Foo(Struct):
     yeet: Bool
     ping: Bool
 
 @dataclass
-@serialized_struct
-class MyStruct:
+class MyStruct(Struct):
     foo: Foo
     bar: UInt
     three_bazs: tuple[Long, Long, Long]
@@ -74,6 +72,7 @@ assert data == st.getvalue()
  - Endianness control
    - At annotation time, or at runtime?
  - Unions (? not clear how I'd implement those)
+ - Optimization and laziness
 
 Higher level:
 

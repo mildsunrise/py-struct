@@ -1,10 +1,22 @@
-from typing import Annotated, Any, BinaryIO, Callable, NamedTuple, get_args, get_origin, get_type_hints
+from typing import runtime_checkable, Protocol, TypeVar, Annotated, Any, BinaryIO, NamedTuple, get_args, get_origin, get_type_hints
 import struct
 
 __all__ = [
+    'FixedSerializable',
     'U8', 'U16', 'U32', 'U64', 'S8', 'S16', 'S32', 'S64', 'F32', 'F64',
-    'serialized_struct', 'FixedSize',
+    'Struct', 'FixedSize',
 ]
+
+S = TypeVar('S', bound='FixedSerializable')
+@runtime_checkable
+class FixedSerializable(Protocol):
+    ''' Protocol class for things that can be serialized with a fixed size '''
+    @classmethod
+    def __size__(cls) -> int: ...
+    @classmethod
+    def __load__(cls: type[S], st: BinaryIO) -> S: ...
+    def __save__(self, st: BinaryIO) -> None: ...
+
 
 # PRIMITIVE TYPES
 
@@ -24,25 +36,32 @@ F64 = Annotated[float, __PrimitiveField('d')]
 
 # CORE PARSING
 
-is_serializer = lambda cls: hasattr(cls, '__load__') and hasattr(cls, '__save__') and hasattr(cls, '__size__')
+class StructMeta(type):
+    def __new__(cls, name, bases, namespace, **kwds):
+        hints = namespace.get('__annotations__', {})
+        hints = { k: parse_hint(v) for k, v in hints.items() }
 
-def serialized_struct(cls):
-    hints = cls.__dict__.get('__annotations__', {})
-    # hints = get_type_hints(cls, include_extras=True)
-    hints = { k: parse_hint(v) for k, v in hints.items() }
+        @classmethod
+        def __load__(cls, st: BinaryIO):
+            return cls(**{ k: t.__load__(st) for k, t in hints.items() })
+        def __save__(self, st: BinaryIO):
+            assert type(self) is dcls
+            for k, t in hints.items(): t.__save__(getattr(self, k), st)
+        namespace['__size__'] = sum(t.__size__ for t in hints.values())
+        namespace['__load__'] = __load__
+        namespace['__save__'] = __save__
 
-    def __load__(st: BinaryIO):
-        return cls(**{ k: t.__load__(st) for k, t in hints.items() })
-    def __save__(self, st: BinaryIO):
-        assert type(self) is cls
-        for k, t in hints.items(): t.__save__(getattr(self, k), st)
-    cls.__size__ = sum(t.__size__ for t in hints.values())
-    cls.__load__ = __load__
-    cls.__save__ = __save__
-    return cls
+        return (dcls := super().__new__(cls, name, bases, namespace, **kwds))
+
+class Struct(metaclass=StructMeta):
+    @classmethod
+    def __size__(cls) -> int: ...
+    @classmethod
+    def __load__(cls: type[S], st: BinaryIO) -> S: ...
+    def __save__(self, st: BinaryIO) -> None: ...
 
 class FixedSizeTupleSerializer(object):
-    def __init__(self, base, size):
+    def __init__(self, base: Any, size: int):
         self.base, self.size = base, size
         self.__size__ = self.base.__size__ * self.size
     def __load__(self, st: BinaryIO):
@@ -52,7 +71,7 @@ class FixedSizeTupleSerializer(object):
         for v in x: self.base.__save__(v, st)
 
 class TupleSerializer(object):
-    def __init__(self, args):
+    def __init__(self, args: list[Any]):
         self.args = args
         self.__size__ = sum(t.__size__ for t in self.args)
     def __load__(self, st: BinaryIO):
@@ -84,7 +103,7 @@ class FixedSize(NamedTuple):
 
 # warning: you need to manage alignment yourself (FIXME: we could check for alignment, maybe)
 # FIXME: we could optimize by bundling fields in Struct
-def parse_hint(hint: Any) -> tuple[Callable[[BinaryIO], Any], Callable[[Any, BinaryIO], None]]:
+def parse_hint(hint: Any) -> Any:
     ''' Parses a type hint and returns a Serializer object for it '''
     metadata = []
     while get_origin(hint) is Annotated:
@@ -93,7 +112,7 @@ def parse_hint(hint: Any) -> tuple[Callable[[BinaryIO], Any], Callable[[Any, Bin
     find_metadata = lambda cls: next(filter(lambda x: isinstance(x, cls), metadata), None)
 
     # if class is already serializable, return it
-    if is_serializer(hint): return hint
+    if get_origin(hint) is None and issubclass(hint, FixedSerializable): return hint
 
     if get_origin(hint) is tuple:
         if len(get_args(hint)) == 2 and get_args(hint)[1] is Ellipsis:

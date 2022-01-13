@@ -16,14 +16,12 @@ Ptr = Size = U64
 # Define some structs
 
 @dataclass
-@serialized_struct
-class Foo:
+class Foo(Struct):
     yeet: Bool
     ping: Bool
 
 @dataclass
-@serialized_struct
-class MyStruct:
+class MyStruct(Struct):
     foo: Foo
     bar: UInt
     three_bazs: tuple[Long, Long, Long]
