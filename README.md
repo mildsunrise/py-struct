@@ -2,12 +2,9 @@
 
 **Fixed-size struct serialization, using Python 3.9 annotated type hints**
 
-This was originally uploaded as a Gist because it's not intended as a serious
-project, but I decided to take it a bit further and add some features.
-
 Features:
  - One file, zero dependencies
- - Easy to use, just annotate your fields and use the decorator
+ - Easy to use, just annotate your fields and derive from `Struct`
  - Overridable (just define `__load__`, `__save__`, `__size__`, `__align__`)
  - Compatible with dataclasses
  - Integer / float primitives
@@ -15,6 +12,8 @@ Features:
  - Raw chunks (`bytes`)
  - Static checking / size calculation
  - Packed or aligned structs, with 3 padding handling modes
+
+This was originally uploaded as a Gist because it's not intended as a serious project, but I decided to take it a bit further and add some features.
 
 
 ## Getting started
@@ -49,7 +48,7 @@ class MyStruct(Struct):
 
 # Decode with __load__(), passing an IO
 
-data = b'\x01\x00\x00\x00\x00\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'
+data = bytes.fromhex('01 00 0000 00050000 0100000000000000 0200000000000000 0300000000000000')
 parsed = MyStruct.__load__(BytesIO(data))
 
 assert parsed == MyStruct(foo=Foo(yeet=1, ping=0), bar=1280, three_bazs=(1, 2, 3))
@@ -107,9 +106,9 @@ For the annotated properties, the following types are allowed:
  - A class implementing the serializable protocol, such as another struct.
  - One of the provided integer / float primitives: `U8`, `S8`, `U16`, `S16`, `U32`, `S32`, `U64`, `S64`, `F32`, `F64`.
    These are aliases of `int` with custom metadata consumed by `Struct`.
- - `bytes`, `list[T]` or `tuple[T, ...]` (where `T` is itself an allowed type).
- - A `tuple` with allowed types as elements.
+ - `bytes`,  `bytearray`, `list[T]` or `tuple[T, ...]` (where `T` is itself an allowed type).
    However, it must be annotated with `FixedSize` metadata like so: `Annotated[list[U8], FixedSize(20)]`
+ - A `tuple` with allowed types as elements.
 
 `Struct` is a metaclass, so it must be the first parent. Inheritace (subclassing the struct class, or more parents in addition to `Struct`) is discouraged and will probably not work correctly.
 
@@ -136,9 +135,21 @@ class Address(Struct, align='no'):
 
 **Caveat:** `tuple` (last case in allowed types) will not verify or insert alignment between its elements. Its alignment will be the GCD of the alignments of its elements, and the size will be the sum of the sizes. This means `tuple[U64, U64]` will probably do what you want (align to 8 bytes), but `tuple[U64, U32]` will only align to 4 bytes. If you need alignment, use a nested Struct instead of a tuple.
 
+**Note:** `align` must be specified on each class; it doesn't get inherited from the struct that used it.
+
+**Note:** You can override the `__align__` field calculated by `Struct`, just make sure it's a divisor of the resulting `__size__`:
+
+~~~ python
+@dataclass
+class Address(Struct, align='no'):
+    __align__ = 2  # would be 1 by default, since we're using align='no'
+    port: U16
+    host: U32
+~~~
+
 ### Malleability
 
-Serialization is non-malleable (that is, there's a bijection between serialized and unserialized values) if all the following conditions are met:
+Serialization is non-malleable (that is, there's a bijection between serialized and unserialized values) if all of the following conditions are met:
 
  - Structs use an alignment setting other than the default `align='discard'`.
 

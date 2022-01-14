@@ -46,7 +46,8 @@ class StructMeta(type):
         assert align in {'no', 'discard', 'zeros', 'explicit'}
 
         hints = namespace.get('__annotations__', {})
-        hints = [ (k, parse_hint(v)) for k, v in hints.items() ]
+        reserved = { '__size__', '__align__' }
+        hints = [ (k, parse_hint(v)) for k, v in hints.items() if k not in reserved ]
 
         def insert_padding(k: str, n: int):
             if align == 'no': return __size__, __align__
@@ -71,16 +72,17 @@ class StructMeta(type):
             assert type(self) is dcls
             for k, t in fields:
                 t.__save__(getattr(self, k) if k != None else k, st)
-        namespace['__align__'] = __align__
+        namespace['__align__'] = __align__ = namespace.get('__align__', __align__)
         namespace['__size__'] = __size__
         namespace['__load__'] = __load__
         namespace['__save__'] = __save__
 
+        assert __align__ > 0 and __size__ % __align__ == 0, '__size__ must be a multiple of __align__'
         return (dcls := super().__new__(cls, name, bases, namespace, **kwds))
 
 class Struct(metaclass=StructMeta):
-    @classmethod
-    def __size__(cls) -> int: ...
+    __size__: ClassVar[int]
+    __align__: ClassVar[int]
     @classmethod
     def __load__(cls: type[S], st: BinaryIO) -> S: ...
     def __save__(self, st: BinaryIO) -> None: ...
@@ -98,15 +100,15 @@ class Padding(object):
     def __save__(self, x, st: BinaryIO):
         st.write(self.contents)
 
-class FixedSizeTupleSerializer(object):
-    def __init__(self, base: Any, size: int):
-        self.base, self.size = base, size
+class SequenceSerializer(object):
+    def __init__(self, base: Any, size: int, ctor: Any):
+        self.base, self.size, self.ctor = base, size, ctor
         self.__size__ = self.base.__size__ * self.size
         self.__align__ = self.base.__align__
     def __load__(self, st: BinaryIO):
-        return tuple(self.base.__load__(st) for _ in range(self.size))
+        return self.ctor(self.base.__load__(st) for _ in range(self.size))
     def __save__(self, x, st: BinaryIO):
-        assert type(x) is tuple and len(x) == self.size
+        assert type(x) is self.ctor and len(x) == self.size
         for v in x: self.base.__save__(v, st)
 
 class TupleSerializer(object):
@@ -120,14 +122,15 @@ class TupleSerializer(object):
         assert type(x) is tuple and len(x) == len(self.args)
         for v, t in zip(x, self.args): t.__save__(v, st)
 
-class FixedSizeBytesSerializer(object):
+class BytesSerializer(object):
     __align__ = 1
-    def __init__(self, size: int):
+    def __init__(self, size: int, ctor: Any):
+        self.ctor = ctor
         self.__size__ = size
     def __load__(self, st: BinaryIO):
-        return st.read(self.__size__)
+        return self.ctor(st.read(self.__size__))
     def __save__(self, x, st: BinaryIO):
-        assert type(x) is bytes and len(x) == self.__size__
+        assert type(x) is self.ctor and len(x) == self.__size__
         st.write(x)
 
 class PrimitiveSerializer(object):
@@ -151,23 +154,29 @@ def parse_hint(hint: Any) -> Any:
         hint, *__metadata = get_args(hint)
         metadata += __metadata
     find_metadata = lambda cls: next(filter(lambda x: isinstance(x, cls), metadata), None)
+    ctor = get_origin(hint)
 
     # if class is already serializable, return it
     if is_serializable(hint): return hint
 
-    if get_origin(hint) is tuple:
-        if len(get_args(hint)) == 2 and get_args(hint)[1] is Ellipsis:
-            base = get_args(hint)[0]
-            if fixed_size := find_metadata(FixedSize):
-                return FixedSizeTupleSerializer(parse_hint(base), fixed_size.size)
-            raise Exception(f"I don't know how to handle variadic tuple of {base} ({metadata})")
+    def handle_sequence():
+        base = get_args(hint)[0]
+        if fixed_size := find_metadata(FixedSize):
+            return SequenceSerializer(parse_hint(base), fixed_size.size, ctor)
+        raise Exception(f"I don't know how to handle variadic {ctor} of {base} ({metadata})")
 
+    if ctor is list and len(get_args(hint)) == 1:
+        return handle_sequence()
+
+    if ctor is tuple:
+        if len(get_args(hint)) == 2 and get_args(hint)[1] is Ellipsis:
+            return handle_sequence()
         return TupleSerializer(list(map(parse_hint, get_args(hint))))
 
     if primitive := find_metadata(__PrimitiveField):
         return PrimitiveSerializer(primitive.fmt)
 
-    if hint is bytes and (fixed_size := find_metadata(FixedSize)):
-        return FixedSizeBytesSerializer(fixed_size.size)
+    if (hint is bytes or hint is bytearray) and (fixed_size := find_metadata(FixedSize)):
+        return BytesSerializer(fixed_size.size, hint)
 
     raise Exception(f"I don't know how to handle {hint} ({metadata})")

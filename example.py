@@ -27,7 +27,7 @@ class MyStruct(Struct):
 
 # Decode with __load__(), passing an IO
 
-data = b'\x01\x00\x00\x00\x00\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'
+data = bytes.fromhex('01 00 0000 00050000 0100000000000000 0200000000000000 0300000000000000')
 parsed = MyStruct.__load__(st := BytesIO(data))
 assert st.tell() == len(data)
 
@@ -46,7 +46,7 @@ class MyStruct(Struct, align='no'):
     bar: UInt
     three_bazs: tuple[Long, Long, Long]
 
-data = b'\x01\x00\x00\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'
+data = bytes.fromhex('01 00      00050000 0100000000000000 0200000000000000 0300000000000000')
 parsed = MyStruct.__load__(st := BytesIO(data))
 assert st.tell() == len(data)
 
