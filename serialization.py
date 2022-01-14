@@ -115,7 +115,7 @@ class TupleSerializer(object):
     def __init__(self, args: list[Any]):
         self.args = args
         self.__size__ = sum(t.__size__ for t in self.args)
-        self.__align__ = gcd(*(t.__align__ for t in self.args))
+        self.__align__ = gcd(self.__size__, lcm(*(t.__align__ for t in self.args)))
     def __load__(self, st: BinaryIO):
         return tuple(t.__load__(st) for t in self.args)
     def __save__(self, x, st: BinaryIO):

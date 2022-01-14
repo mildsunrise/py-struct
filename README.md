@@ -133,7 +133,7 @@ class Address(Struct, align='no'):
     host: U32
 ~~~
 
-**Caveat:** `tuple` (last case in allowed types) will not verify or insert alignment between its elements. Its alignment will be the GCD of the alignments of its elements, and the size will be the sum of the sizes. This means `tuple[U64, U64]` will probably do what you want (align to 8 bytes), but `tuple[U64, U32]` will only align to 4 bytes. If you need alignment, use a nested Struct instead of a tuple.
+**Caveat:** `tuple` (last case in allowed types) will not verify or insert alignment between its elements; its size will be the sum of the field sizes. Its alignment will be `gcd(__size__, lcm(field alignments...))`, which means it'll have the right alignment if its elements are aligned. If you need proper alignment handling, use a nested Struct instead of a tuple.
 
 **Note:** `align` must be specified on each class; it doesn't get inherited from the struct that used it.
 
