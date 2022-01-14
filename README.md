@@ -105,7 +105,7 @@ The implemented `__load__` will construct an instance of the class passsing in k
 For the annotated properties, the following types are allowed:
  - A class implementing the serializable protocol, such as another struct.
  - One of the provided integer / float primitives: `U8`, `S8`, `U16`, `S16`, `U32`, `S32`, `U64`, `S64`, `F32`, `F64`.
-   These are aliases of `int` with custom metadata consumed by `Struct`.
+   These are aliases of `int` or `float`, with custom metadata consumed by `Struct`.
  - `bytes`,  `bytearray`, `list[T]` or `tuple[T, ...]` (where `T` is itself an allowed type).
    However, it must be annotated with `FixedSize` metadata like so: `Annotated[list[U8], FixedSize(20)]`
  - A `tuple` with allowed types as elements.
